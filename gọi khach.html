@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ứng dụng Gọi Khách</title>
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+    }
+    .container {
+        background: rgba(255,255,255,0.95);
+        border-radius: 20px;
+        padding: 30px 40px;
+        max-width: 700px;
+        width: 100%;
+    }
+    textarea, input, select {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        font-size: 16px;
+        margin-bottom: 15px;
+        resize: vertical;
+    }
+    button {
+        padding: 12px 20px;
+        border: none;
+        border-radius: 50px;
+        font-weight: 600;
+        cursor: pointer;
+        margin: 5px;
+    }
+    .speak-btn { background: linear-gradient(45deg, #4CAF50, #45a049); color: white; }
+    .stop-btn { background: linear-gradient(45deg, #f44336, #d32f2f); color: white; }
+    .stt-btn { background: linear-gradient(45deg, #ff4081, #e91e63); color: white; }
+    .pause-btn { background: linear-gradient(45deg, #ff9800, #f57c00); color: white; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>📢 Ứng dụng Gọi Khách</h1>
+
+    <label for="textInput">✍️ Nhập nội dung thông báo:</label>
+    <textarea id="textInput" placeholder="VD: Bệnh nhân Nguyễn Văn An đến phòng số 2..."></textarea>
+    <div>
+        <button id="startSTTBtn" class="stt-btn">🎙 Bắt đầu ghi âm</button>
+        <button id="pauseSTTBtn" class="pause-btn" disabled>⏸ Tạm dừng</button>
+        <span id="sttStatus" style="font-weight:600;color:#ff4081;"></span>
+    </div>
+
+    <label>🔊 Chọn giọng:</label>
+    <select id="voiceSelect"></select>
+
+    <label>⚡ Tốc độ:</label>
+    <input type="range" id="rateRange" min="0.5" max="2" step="0.1" value="1">
+    <label>🎵 Cao độ:</label>
+    <input type="range" id="pitchRange" min="0.5" max="2" step="0.1" value="1">
+
+    <button class="speak-btn" id="speakBtn">🎤 Đọc</button>
+    <button class="stop-btn" id="stopBtn">⏹️ Dừng</button>
+
+    <div id="status" style="margin-top:15px;color:#333;font-weight:600;">Sẵn sàng đọc văn bản</div>
+</div>
+
+<script>
+    // ================== Speech-to-Text ==================
+    const textInput = document.getElementById('textInput');
+    const startBtn = document.getElementById('startSTTBtn');
+    const pauseBtn = document.getElementById('pauseSTTBtn');
+    const sttStatus = document.getElementById('sttStatus');
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition, isListening = false, tempTranscript = '';
+
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.lang = 'vi-VN';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        startBtn.addEventListener('click', () => {
+            recognition.start();
+            isListening = true;
+            tempTranscript = '';
+            sttStatus.textContent = "🎙 Đang nghe...";
+            startBtn.disabled = true;
+            pauseBtn.disabled = false;
+        });
+
+        pauseBtn.addEventListener('click', () => {
+            recognition.stop();
+            isListening = false;
+            // Ghi nhận đoạn vừa nói vào ô nhập liệu, nối thêm
+            if (tempTranscript.trim()) {
+                textInput.value = (textInput.value.trim() ? textInput.value.trim() + ' ' : '') + tempTranscript.trim();
+                tempTranscript = '';
+            }
+            sttStatus.textContent = "⏹ Đã tạm dừng";
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+        });
+
+        recognition.onresult = (event) => {
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                let transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    tempTranscript += transcript + ' ';
+                } else {
+                    interim += transcript;
+                }
+            }
+        };
+
+        recognition.onerror = (e) => {
+            sttStatus.textContent = "❌ Lỗi: " + e.error;
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+        };
+    } else {
+        alert("Trình duyệt không hỗ trợ nhận dạng giọng nói.");
+    }
+
+    // ================== Text-to-Speech ==================
+    class VietnameseTTS {
+        constructor() {
+            this.synth = window.speechSynthesis;
+            this.voices = [];
+            this.textInput = document.getElementById('textInput');
+            this.voiceSelect = document.getElementById('voiceSelect');
+            this.rateRange = document.getElementById('rateRange');
+            this.pitchRange = document.getElementById('pitchRange');
+            this.speakBtn = document.getElementById('speakBtn');
+            this.stopBtn = document.getElementById('stopBtn');
+            this.status = document.getElementById('status');
+            this.loadVoices();
+            this.bindEvents();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = () => this.loadVoices();
+            }
+        }
+        loadVoices() {
+            this.voices = this.synth.getVoices();
+            const vietnameseVoices = this.voices.filter(v => v.lang.includes('vi') || v.name.toLowerCase().includes('vietnam'));
+            const voicesList = vietnameseVoices.length ? vietnameseVoices : this.voices;
+            this.voiceSelect.innerHTML = '';
+            voicesList.forEach(voice => {
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.setAttribute('data-voice-uri', voice.voiceURI);
+                this.voiceSelect.appendChild(option);
+            });
+        }
+        bindEvents() {
+            this.speakBtn.addEventListener('click', () => this.speak());
+            this.stopBtn.addEventListener('click', () => this.stop());
+        }
+        speak() {
+            const text = this.textInput.value.trim();
+            if (!text) {
+                this.status.textContent = "⚠️ Vui lòng nhập nội dung";
+                return;
+            }
+            const utterance = new SpeechSynthesisUtterance(text);
+            const selectedOption = this.voiceSelect.options[this.voiceSelect.selectedIndex];
+            const voiceURI = selectedOption.getAttribute('data-voice-uri');
+            utterance.voice = this.voices.find(v => v.voiceURI === voiceURI);
+            utterance.rate = parseFloat(this.rateRange.value);
+            utterance.pitch = parseFloat(this.pitchRange.value);
+            utterance.onstart = () => this.status.textContent = "🎤 Đang đọc...";
+            utterance.onend = () => this.status.textContent = "✅ Đã đọc xong";
+            this.synth.speak(utterance);
+        }
+        stop() {
+            this.synth.cancel();
+            this.status.textContent = "⏹️ Đã dừng";
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        new VietnameseTTS();
+    });
+</script>
+</body>
+</html>
